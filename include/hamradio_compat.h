@@ -2,6 +2,7 @@
 #ifndef _MOD_ORPHAN_COMPAT_H
 #define _MOD_ORPHAN_COMPAT_H
 
+#include <linux/version.h>
 #include <linux/slab.h>
 #include <linux/overflow.h>
 
@@ -34,5 +35,13 @@
 	__alloc_objs(kzalloc, default_gfp_compat(__VA_ARGS__), typeof(P), COUNT)
 
 #endif /* __alloc_objs */
+
+/*
+ * struct sockaddr_unsized was introduced in Linux 7.0 to replace struct sockaddr
+ * in proto_ops .bind/.connect callbacks. Map it to struct sockaddr on older kernels.
+ */
+#if LINUX_VERSION_CODE < KERNEL_VERSION(7, 0, 0)
+#define sockaddr_unsized sockaddr
+#endif
 
 #endif /* _MOD_ORPHAN_COMPAT_H */
