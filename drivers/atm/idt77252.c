@@ -3722,6 +3722,7 @@ err_out_stop:
 		dev->phy->stop(dev);
 
 err_out_deinit_card:
+	timer_shutdown_sync(&card->tst_timer);
 	deinit_card(card);
 
 err_out_iounmap:
