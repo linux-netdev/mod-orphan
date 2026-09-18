@@ -7,11 +7,24 @@
 #include <linux/overflow.h>
 
 /*
- * Compat shims for kzalloc_obj/kmalloc_obj/kzalloc_objs/kmalloc_objs
- * which were added in kernels newer than 6.x. If the kernel already
- * has them (detected via __alloc_objs), skip the definitions.
+ * Compat shims for kzalloc_obj/kmalloc_obj/kzalloc_objs/kmalloc_objs,
+ * with an optional GFP argument (defaulting to GFP_KERNEL) that every
+ * call site in this tree relies on.
+ *
+ * Some vendor kernels (e.g. Raspberry Pi Foundation's 6.18.x) already
+ * backport __alloc_objs()/kmalloc_obj()/etc. natively, but with a
+ * mandatory GFP argument and no variadic default. Skipping our own
+ * definitions in that case (the previous "#ifndef __alloc_objs" guard)
+ * left the vendor's incompatible, GFP-mandatory macros in place and
+ * broke every 1-argument call site in this tree. Always #undef and
+ * redefine our own variadic versions instead of trusting whatever the
+ * host kernel provides.
  */
-#ifndef __alloc_objs
+#undef __alloc_objs
+#undef kmalloc_obj
+#undef kmalloc_objs
+#undef kzalloc_obj
+#undef kzalloc_objs
 
 #define __default_gfp_compat(a, b, ...) b
 #define default_gfp_compat(...) __default_gfp_compat(, ##__VA_ARGS__, GFP_KERNEL)
@@ -33,8 +46,6 @@
 
 #define kzalloc_objs(P, COUNT, ...) \
 	__alloc_objs(kzalloc, default_gfp_compat(__VA_ARGS__), typeof(P), COUNT)
-
-#endif /* __alloc_objs */
 
 /*
  * struct sockaddr_unsized was introduced in Linux 7.0 to replace struct sockaddr
