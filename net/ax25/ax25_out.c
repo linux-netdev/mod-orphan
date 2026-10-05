@@ -69,7 +69,6 @@ ax25_cb *ax25_send_frame(struct sk_buff *skb, int paclen, const ax25_address *sr
 		return NULL;
 	}
 	ax25_fillin_cb(ax25, ax25_dev);
-	rcu_read_unlock();
 
 	ax25->source_addr = *src;
 	ax25->dest_addr   = *dest;
@@ -77,6 +76,7 @@ ax25_cb *ax25_send_frame(struct sk_buff *skb, int paclen, const ax25_address *sr
 	if (digi != NULL) {
 		ax25->digipeat = kmemdup(digi, sizeof(*digi), GFP_ATOMIC);
 		if (ax25->digipeat == NULL) {
+			rcu_read_unlock();
 			ax25_cb_put(ax25);
 			return NULL;
 		}
@@ -104,7 +104,25 @@ ax25_cb *ax25_send_frame(struct sk_buff *skb, int paclen, const ax25_address *sr
 	 */
 	ax25_cb_hold(ax25);
 
-	ax25_cb_add(ax25);
+	/*
+	 * Nothing but the RCU read lock taken above keeps ax25_dev alive so
+	 * far.  From the moment the connection is on the list,
+	 * ax25_kill_by_device() detaches it before the device goes away.  If
+	 * the device is already going down that walk may be over: do not
+	 * leave behind a connection that points to a freed ax25_dev.
+	 */
+	if (!ax25_cb_add_dev_up(ax25)) {
+		rcu_read_unlock();
+		timer_delete_sync(&ax25->t1timer);
+		timer_delete_sync(&ax25->t2timer);
+		timer_delete_sync(&ax25->t3timer);
+		timer_delete_sync(&ax25->idletimer);
+		ax25->ax25_dev = NULL;
+		ax25_cb_put(ax25);
+		ax25_cb_put(ax25);
+		return NULL;
+	}
+	rcu_read_unlock();
 
 	ax25->state = AX25_STATE_1;
 

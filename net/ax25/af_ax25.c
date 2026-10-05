@@ -81,9 +81,10 @@ static void ax25_kill_by_device(struct net_device *dev)
 
 	if ((ax25_dev = ax25_dev_ax25dev(dev)) == NULL)
 		return;
-	ax25_dev->device_up = false;
 
 	spin_lock_bh(&ax25_list_lock);
+	/* Cleared under the lock: see ax25_cb_add_dev_up() */
+	ax25_dev->device_up = false;
 again:
 	ax25_for_each(s, &ax25_list) {
 		if (s->ax25_dev == ax25_dev) {
@@ -163,6 +164,32 @@ void ax25_cb_add(ax25_cb *ax25)
 	ax25_cb_hold(ax25);
 	hlist_add_head(&ax25->ax25_node, &ax25_list);
 	spin_unlock_bh(&ax25_list_lock);
+}
+
+/*
+ *	Add a connection made by the kernel to the list, unless its device
+ *	is going down.
+ *
+ *	Such a connection holds no reference on its ax25_dev: it relies on
+ *	ax25_kill_by_device() to detach it before the ax25_dev is freed.
+ *	ax25_kill_by_device() clears device_up under ax25_list_lock before it
+ *	walks the list, so a connection added here while device_up is still
+ *	set is always found by that walk.  The caller must keep the ax25_dev
+ *	alive across the call, with rcu_read_lock().
+ */
+bool ax25_cb_add_dev_up(ax25_cb *ax25)
+{
+	bool up;
+
+	spin_lock_bh(&ax25_list_lock);
+	up = ax25->ax25_dev->device_up;
+	if (up) {
+		ax25_cb_hold(ax25);
+		hlist_add_head(&ax25->ax25_node, &ax25_list);
+	}
+	spin_unlock_bh(&ax25_list_lock);
+
+	return up;
 }
 
 /*
