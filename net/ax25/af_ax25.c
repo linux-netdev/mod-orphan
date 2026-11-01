@@ -1555,7 +1555,7 @@ static int ax25_sendmsg(struct socket *sock, struct msghdr *msg, size_t len)
 	struct sock *sk = sock->sk;
 	struct sockaddr_ax25 sax;
 	struct sk_buff *skb;
-	ax25_digi dtmp, *dp;
+	ax25_digi dtmp, *dp = NULL;
 	ax25_cb *ax25;
 	size_t size;
 	int lv, err, addr_len = msg->msg_namelen;
@@ -1630,6 +1630,7 @@ static int ax25_sendmsg(struct socket *sock, struct msghdr *msg, size_t len)
 			}
 
 			dtmp.lastrepeat = 0;
+			dp = &dtmp;
 		}
 
 		sax = *usax;
@@ -1638,10 +1639,6 @@ static int ax25_sendmsg(struct socket *sock, struct msghdr *msg, size_t len)
 			err = -EISCONN;
 			goto out;
 		}
-		if (usax->sax25_ndigis == 0)
-			dp = NULL;
-		else
-			dp = &dtmp;
 	} else {
 		/*
 		 *	FIXME: 1003.1g - if the socket is like this because
