@@ -1024,8 +1024,7 @@ int nr_rx_frame(struct sk_buff *skb, struct net_device *dev)
 	circuit++;
 
 	/* Window negotiation */
-	if (window < nr_make->window)
-		nr_make->window = window;
+	nr_negotiate_window(nr_make, window);
 
 	/* L4 timeout negotiation */
 	if (skb->len == 37) {
