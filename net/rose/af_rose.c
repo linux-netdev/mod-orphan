@@ -895,8 +895,6 @@ static int rose_connect(struct socket *sock, struct sockaddr_unsized *uaddr, int
 	if (sock_flag(sk, SOCK_ZAPPED)) {	/* Must bind first - autobinding in this may or may not work */
 		struct net_device *dev;
 
-		sock_reset_flag(sk, SOCK_ZAPPED);
-
 		dev = rose_dev_first();
 		if (!dev) {
 			err = -ENETUNREACH;
@@ -917,6 +915,8 @@ static int rose_connect(struct socket *sock, struct sockaddr_unsized *uaddr, int
 				     GFP_KERNEL);
 		ax25_uid_put(user);
 
+		/* Only now is the socket bound: a failed autobind leaves it as it was */
+		sock_reset_flag(sk, SOCK_ZAPPED);
 		rose_insert_socket(sk);		/* Finish the bind */
 	}
 
