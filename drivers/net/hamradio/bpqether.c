@@ -302,8 +302,8 @@ static int bpq_set_mac_address(struct net_device *dev, void *addr)
 static int bpq_siocdevprivate(struct net_device *dev, struct ifreq *ifr,
 			      void __user *data, int cmd)
 {
-	struct bpq_ethaddr __user *ethaddr = data;
 	struct bpqdev *bpq = netdev_priv(dev);
+	struct bpq_ethaddr ethaddr;
 	struct bpq_req req;
 
 	if (!capable(CAP_NET_ADMIN))
@@ -323,10 +323,10 @@ static int bpq_siocdevprivate(struct net_device *dev, struct ifreq *ifr,
 			break;
 
 		case SIOCSBPQETHADDR:
-			if (copy_from_user(bpq->dest_addr, ethaddr->destination, ETH_ALEN))
+			if (copy_from_user(&ethaddr, data, sizeof(ethaddr)))
 				return -EFAULT;
-			if (copy_from_user(bpq->acpt_addr, ethaddr->accept, ETH_ALEN))
-				return -EFAULT;
+			memcpy(bpq->dest_addr, ethaddr.destination, ETH_ALEN);
+			memcpy(bpq->acpt_addr, ethaddr.accept, ETH_ALEN);
 			break;
 
 		default:
