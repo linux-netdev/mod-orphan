@@ -995,6 +995,30 @@ static bool rose_same_call(const struct rose_route *rose_route,
 }
 
 /*
+ *	A packet for a logical channel we have no call on, neither a socket
+ *	nor a through route: tell the neighbour, as X.25 does, so that it
+ *	does not keep a dead call. A Clear Request is confirmed, a Clear
+ *	Confirmation needs no answer, any other packet gets a Clear Request
+ *	(local procedure error, diagnostic 36: unassigned logical channel).
+ *	Never called for a Call Request.
+ */
+static void rose_unknown_lci(struct rose_neigh *rose_neigh, unsigned int lci,
+			     unsigned short frametype)
+{
+	switch (frametype) {
+	case ROSE_CLEAR_REQUEST:
+		rose_transmit_clear_confirmation(rose_neigh, lci);
+		break;
+	case ROSE_CLEAR_CONFIRMATION:
+		break;
+	default:
+		rose_transmit_clear_request(rose_neigh, lci,
+					    ROSE_LOCAL_PROCEDURE, 36);
+		break;
+	}
+}
+
+/*
  *	Route a frame to an appropriate AX.25 connection.
  *	A NULL ax25_cb indicates an internally generated frame.
  */
@@ -1109,7 +1133,11 @@ int rose_route_frame(struct sk_buff *skb, ax25_cb *ax25)
 		}
 
 	if (!sysctl_rose_routing_control) {
-		rose_transmit_clear_request(rose_neigh, lci, ROSE_NOT_OBTAINABLE, 0);
+		if (frametype == ROSE_CALL_REQUEST)
+			rose_transmit_clear_request(rose_neigh, lci,
+						    ROSE_NOT_OBTAINABLE, 0);
+		else
+			rose_unknown_lci(rose_neigh, lci, frametype);
 		goto out;
 	}
 
@@ -1174,7 +1202,17 @@ int rose_route_frame(struct sk_buff *skb, ax25_cb *ax25)
 				res = 1;
 				goto out;
 			} else {
-				if (frametype == ROSE_CLEAR_CONFIRMATION)
+				/*
+				 *	The other half is gone and we wait for
+				 *	the Clear Confirmation of this one. A
+				 *	Clear Request crossing ours ends the
+				 *	route too: confirm it.
+				 */
+				if (frametype == ROSE_CLEAR_REQUEST)
+					rose_transmit_clear_confirmation(rose_neigh,
+									 lci);
+				if (frametype == ROSE_CLEAR_CONFIRMATION ||
+				    frametype == ROSE_CLEAR_REQUEST)
 					rose_remove_route(rose_route);
 				goto out;
 			}
@@ -1225,7 +1263,17 @@ int rose_route_frame(struct sk_buff *skb, ax25_cb *ax25)
 				res = 1;
 				goto out;
 			} else {
-				if (frametype == ROSE_CLEAR_CONFIRMATION)
+				/*
+				 *	The other half is gone and we wait for
+				 *	the Clear Confirmation of this one. A
+				 *	Clear Request crossing ours ends the
+				 *	route too: confirm it.
+				 */
+				if (frametype == ROSE_CLEAR_REQUEST)
+					rose_transmit_clear_confirmation(rose_neigh,
+									 lci);
+				if (frametype == ROSE_CLEAR_CONFIRMATION ||
+				    frametype == ROSE_CLEAR_REQUEST)
 					rose_remove_route(rose_route);
 				goto out;
 			}
@@ -1238,8 +1286,8 @@ int rose_route_frame(struct sk_buff *skb, ax25_cb *ax25)
 	 *	1. The frame isn't for us,
 	 *	2. It isn't "owned" by any existing route.
 	 */
-	if (frametype != ROSE_CALL_REQUEST) {	/* XXX */
-		res = 0;
+	if (frametype != ROSE_CALL_REQUEST) {
+		rose_unknown_lci(rose_neigh, lci, frametype);
 		goto out;
 	}
 

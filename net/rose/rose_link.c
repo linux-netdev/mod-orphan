@@ -339,6 +339,38 @@ void rose_link_bring_up(struct rose_neigh *neigh)
 	rose_start_t0timer(neigh);
 }
 
+/*
+ * This routine is called when a Clear Confirmation is needed outside of the
+ * context of a connected socket.
+ */
+void rose_transmit_clear_confirmation(struct rose_neigh *neigh, unsigned int lci)
+{
+	struct sk_buff *skb;
+	unsigned char *dptr;
+	int len;
+
+	if (!neigh->dev)
+		return;
+
+	len = AX25_BPQ_HEADER_LEN + AX25_MAX_HEADER_LEN + ROSE_MIN_LEN + 1;
+
+	skb = alloc_skb(len, GFP_ATOMIC);
+	if (!skb)
+		return;
+
+	skb_reserve(skb, AX25_BPQ_HEADER_LEN + AX25_MAX_HEADER_LEN);
+
+	dptr = skb_put(skb, ROSE_MIN_LEN + 1);
+
+	*dptr++ = AX25_P_ROSE;
+	*dptr++ = ((lci >> 8) & 0x0F) | ROSE_GFI;
+	*dptr++ = ((lci >> 0) & 0xFF);
+	*dptr++ = ROSE_CLEAR_CONFIRMATION;
+
+	if (!rose_send_frame(skb, neigh))
+		kfree_skb(skb);
+}
+
 void rose_transmit_link(struct sk_buff *skb, struct rose_neigh *neigh)
 {
 	unsigned char *dptr;
