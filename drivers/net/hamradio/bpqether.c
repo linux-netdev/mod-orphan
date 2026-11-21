@@ -104,6 +104,7 @@ struct bpqdev {
 	struct net_device *axdev;	/* bpq device (bpq#) */
 	char   dest_addr[6];		/* ether destination address */
 	char   acpt_addr[6];		/* accept ether frames from this address only */
+	bool   reopen;			/* closed because the ether device went down */
 };
 
 static LIST_HEAD(bpq_devices);
@@ -338,6 +339,11 @@ static int bpq_siocdevprivate(struct net_device *dev, struct ifreq *ifr,
  */
 static int bpq_open(struct net_device *dev)
 {
+	struct bpqdev *bpq = netdev_priv(dev);
+
+	if (!netif_running(bpq->ethdev))
+		return -ENETDOWN;
+
 	netif_start_queue(dev);
 	return 0;
 }
@@ -513,6 +519,8 @@ static int bpq_device_event(struct notifier_block *this,
 			    unsigned long event, void *ptr)
 {
 	struct net_device *dev = netdev_notifier_info_to_dev(ptr);
+	struct net_device *axdev;
+	struct bpqdev *bpq;
 
 	if (!net_eq(dev_net(dev), &init_net))
 		return NOTIFY_DONE;
@@ -521,14 +529,27 @@ static int bpq_device_event(struct notifier_block *this,
 		return NOTIFY_DONE;
 
 	switch (event) {
-	case NETDEV_UP:		/* new ethernet device -> new BPQ interface */
-		if (bpq_get_ax25_dev(dev) == NULL)
+	case NETDEV_UP:
+		axdev = bpq_get_ax25_dev(dev);
+		if (!axdev) {		/* new ethernet device -> new BPQ interface */
 			bpq_new_device(dev);
+			break;
+		}
+		/* reopen a BPQ interface closed when the device went down */
+		bpq = netdev_priv(axdev);
+		if (bpq->reopen) {
+			bpq->reopen = false;
+			dev_open(axdev, NULL);
+		}
 		break;
 
 	case NETDEV_DOWN:	/* ethernet device closed -> close BPQ interface */
-		if ((dev = bpq_get_ax25_dev(dev)) != NULL)
-			dev_close(dev);
+		axdev = bpq_get_ax25_dev(dev);
+		if (axdev && netif_running(axdev)) {
+			dev_close(axdev);
+			bpq = netdev_priv(axdev);
+			bpq->reopen = true;
+		}
 		break;
 
 	case NETDEV_UNREGISTER:	/* ethernet device removed -> free BPQ interface */
