@@ -240,12 +240,24 @@ static netdev_tx_t bpq_xmit(struct sk_buff *skb, struct net_device *dev)
 	skb_pull(skb, 1);			/* Drop KISS byte */
 	size = skb->len;
 
+	bpq = netdev_priv(dev);
+
+	orig_dev = dev;
+	dev = bpq_get_ether_dev(dev);
+	if (!dev) {
+		orig_dev->stats.tx_dropped++;
+		kfree_skb(skb);
+		return NETDEV_TX_OK;
+	}
+
 	/*
 	 * We're about to mess with the skb which may still shared with the
 	 * generic networking code so unshare and ensure it's got enough
-	 * space for the BPQ headers.
+	 * space for the length bytes and for the link layer header of the
+	 * Ethernet device. That header can be longer than an Ethernet
+	 * header, e.g. on a VLAN device that inserts the tag itself.
 	 */
-	if (skb_cow(skb, AX25_BPQ_HEADER_LEN)) {
+	if (skb_cow(skb, LL_RESERVED_SPACE(dev) + 2)) {
 		if (net_ratelimit())
 			pr_err("bpqether: out of memory\n");
 		kfree_skb(skb);
@@ -257,15 +269,6 @@ static netdev_tx_t bpq_xmit(struct sk_buff *skb, struct net_device *dev)
 
 	*ptr++ = (size + 5) % 256;
 	*ptr++ = (size + 5) / 256;
-
-	bpq = netdev_priv(dev);
-
-	orig_dev = dev;
-	if ((dev = bpq_get_ether_dev(dev)) == NULL) {
-		orig_dev->stats.tx_dropped++;
-		kfree_skb(skb);
-		return NETDEV_TX_OK;
-	}
 
 	skb->protocol = ax25_type_trans(skb, dev);
 	skb_reset_network_header(skb);
