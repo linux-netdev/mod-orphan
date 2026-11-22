@@ -58,16 +58,7 @@ void ax25_std_heartbeat_expiry(ax25_cb *ax25)
 		/*
 		 * Check the state of the receive buffer.
 		 */
-		if (sk != NULL) {
-			if (atomic_read(&sk->sk_rmem_alloc) <
-			    (sk->sk_rcvbuf >> 1) &&
-			    (ax25->condition & AX25_COND_OWN_RX_BUSY)) {
-				ax25->condition &= ~AX25_COND_OWN_RX_BUSY;
-				ax25->condition &= ~AX25_COND_ACK_PENDING;
-				ax25_send_control(ax25, AX25_RR, AX25_POLLOFF, AX25_RESPONSE);
-				break;
-			}
-		}
+		ax25_check_rx_busy(ax25);
 	}
 
 	if (sk)
