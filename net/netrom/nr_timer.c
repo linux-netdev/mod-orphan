@@ -133,14 +133,7 @@ static void nr_heartbeat_expiry(struct timer_list *t)
 		/*
 		 * Check for the state of the receive buffer.
 		 */
-		if (atomic_read(&sk->sk_rmem_alloc) < (sk->sk_rcvbuf / 2) &&
-		    (nr->condition & NR_COND_OWN_RX_BUSY)) {
-			nr->condition &= ~NR_COND_OWN_RX_BUSY;
-			nr->condition &= ~NR_COND_ACK_PENDING;
-			nr->vl         = nr->vr;
-			nr_write_internal(sk, NR_INFOACK);
-			break;
-		}
+		nr_check_rx_busy(sk);
 		break;
 	}
 

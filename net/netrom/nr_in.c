@@ -193,6 +193,63 @@ static bool nr_reseq_has_ns(struct nr_sock *nrom, unsigned short ns)
 }
 
 /*
+ * Hand the frames held on the resequencing queue to the socket, in
+ * order, for as long as the socket takes them.
+ */
+static void nr_reseq_deliver(struct sock *sk)
+{
+	struct nr_sock *nrom = nr_sk(sk);
+	struct sk_buff_head temp_queue;
+	struct sk_buff *skbn;
+	unsigned short save_vr, ns;
+	int more;
+
+	skb_queue_head_init(&temp_queue);
+	do {
+		save_vr = nrom->vr;
+		while ((skbn = skb_dequeue(&nrom->reseq_queue)) != NULL) {
+			ns = skbn->data[17];
+			if (ns == nrom->vr) {
+				/* The flags of this frame, not of the one just received */
+				more = skbn->data[19] & NR_MORE_FLAG;
+				if (nr_queue_rx_frame(sk, skbn, more) == 0) {
+					nrom->vr = (nrom->vr + 1) % NR_MODULUS;
+				} else {
+					nrom->condition |= NR_COND_OWN_RX_BUSY;
+					skb_queue_tail(&temp_queue, skbn);
+				}
+			} else if (nr_in_rx_window(sk, ns)) {
+				skb_queue_tail(&temp_queue, skbn);
+			} else {
+				kfree_skb(skbn);
+			}
+		}
+		while ((skbn = skb_dequeue(&temp_queue)) != NULL)
+			skb_queue_tail(&nrom->reseq_queue, skbn);
+	} while (save_vr != nrom->vr);
+}
+
+/*
+ * Leave the busy state as soon as the application has made room in the
+ * receive buffer: hand over the frames held meanwhile and tell the peer
+ * at once, instead of waiting for the next heartbeat or the next frame.
+ * Called with the socket spinlock held.
+ */
+void nr_check_rx_busy(struct sock *sk)
+{
+	struct nr_sock *nrom = nr_sk(sk);
+
+	if (nrom->state != NR_STATE_3 ||
+	    !(nrom->condition & NR_COND_OWN_RX_BUSY) ||
+	    atomic_read(&sk->sk_rmem_alloc) >= sk->sk_rcvbuf / 2)
+		return;
+
+	nrom->condition &= ~NR_COND_OWN_RX_BUSY;
+	nr_reseq_deliver(sk);
+	nr_enquiry_response(sk);
+}
+
+/*
  * State machine for state 3, Connected State.
  * The handling of the timer(s) is in file nr_timer.c
  * Handling of state 0 and connection release is in netrom.c.
@@ -200,11 +257,8 @@ static bool nr_reseq_has_ns(struct nr_sock *nrom, unsigned short ns)
 static int nr_state3_machine(struct sock *sk, struct sk_buff *skb, int frametype)
 {
 	struct nr_sock *nrom = nr_sk(sk);
-	struct sk_buff_head temp_queue;
-	struct sk_buff *skbn;
-	unsigned short save_vr;
 	unsigned short nr, ns;
-	int queued = 0, more;
+	int queued = 0;
 
 	nr = skb->data[18];
 
@@ -290,30 +344,7 @@ static int nr_state3_machine(struct sock *sk, struct sk_buff *skb, int frametype
 		skb_queue_head(&nrom->reseq_queue, skb);
 		if (nrom->condition & NR_COND_OWN_RX_BUSY)
 			break;
-		skb_queue_head_init(&temp_queue);
-		do {
-			save_vr = nrom->vr;
-			while ((skbn = skb_dequeue(&nrom->reseq_queue)) != NULL) {
-				ns = skbn->data[17];
-				if (ns == nrom->vr) {
-					/* The flags of this frame, not of the one just received */
-					more = skbn->data[19] & NR_MORE_FLAG;
-					if (nr_queue_rx_frame(sk, skbn, more) == 0) {
-						nrom->vr = (nrom->vr + 1) % NR_MODULUS;
-					} else {
-						nrom->condition |= NR_COND_OWN_RX_BUSY;
-						skb_queue_tail(&temp_queue, skbn);
-					}
-				} else if (nr_in_rx_window(sk, ns)) {
-					skb_queue_tail(&temp_queue, skbn);
-				} else {
-					kfree_skb(skbn);
-				}
-			}
-			while ((skbn = skb_dequeue(&temp_queue)) != NULL) {
-				skb_queue_tail(&nrom->reseq_queue, skbn);
-			}
-		} while (save_vr != nrom->vr);
+		nr_reseq_deliver(sk);
 		/*
 		 * Window is full, ack it immediately.
 		 */

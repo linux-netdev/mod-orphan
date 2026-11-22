@@ -1248,6 +1248,13 @@ static int nr_recvmsg(struct socket *sock, struct msghdr *msg, size_t size,
 
 	skb_free_datagram(sk, skb);
 
+	/* Room was made: leave the busy state now if we can */
+	local_bh_disable();
+	bh_lock_sock(sk);
+	nr_check_rx_busy(sk);
+	bh_unlock_sock(sk);
+	local_bh_enable();
+
 	release_sock(sk);
 	return copied;
 }
