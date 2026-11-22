@@ -1825,7 +1825,12 @@ static int ax25_recvmsg(struct socket *sock, struct msghdr *msg, size_t size,
 	 * 	This works for seqpacket too. The receiver has ordered the
 	 *	queue for us! We do one quick check first though
 	 */
-	if (sk->sk_type == SOCK_SEQPACKET && sk->sk_state != TCP_ESTABLISHED) {
+	/*
+	 * Data that arrived before the link was closed can still be read:
+	 * the peer often sends its last message just before DISC.
+	 */
+	if (sk->sk_type == SOCK_SEQPACKET && sk->sk_state != TCP_ESTABLISHED &&
+	    skb_queue_empty(&sk->sk_receive_queue)) {
 		err =  -ENOTCONN;
 		goto out;
 	}
