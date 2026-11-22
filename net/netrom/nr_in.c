@@ -182,6 +182,16 @@ static int nr_state2_machine(struct sock *sk, struct sk_buff *skb,
 	return 0;
 }
 
+static bool nr_reseq_has_ns(struct nr_sock *nrom, unsigned short ns)
+{
+	struct sk_buff *skb;
+
+	skb_queue_walk(&nrom->reseq_queue, skb)
+		if (skb->data[17] == ns)
+			return true;
+	return false;
+}
+
 /*
  * State machine for state 3, Connected State.
  * The handling of the timer(s) is in file nr_timer.c
@@ -266,6 +276,16 @@ static int nr_state3_machine(struct sock *sk, struct sk_buff *skb, int frametype
 				}
 			}
 		}
+		/*
+		 * While we are busy the frames are only kept for later.
+		 * Keep the ones inside the window that we do not hold
+		 * already, so that a peer that does not stop sending
+		 * cannot make the queue grow without limit.
+		 */
+		ns = skb->data[17];
+		if ((nrom->condition & NR_COND_OWN_RX_BUSY) &&
+		    (!nr_in_rx_window(sk, ns) || nr_reseq_has_ns(nrom, ns)))
+			break;
 		queued = 1;
 		skb_queue_head(&nrom->reseq_queue, skb);
 		if (nrom->condition & NR_COND_OWN_RX_BUSY)
