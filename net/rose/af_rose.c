@@ -728,6 +728,40 @@ static struct sock *rose_make_new(struct sock *osk)
 	return sk;
 }
 
+/*
+ * Before a connected socket is closed, let the data already written leave
+ * the write queue: the CLEAR REQUEST that follows clears the queues, and
+ * a message written just before close() would never be sent. ROSE does
+ * not send DATA packets again and the peer may hold its acknowledgments
+ * back, so only the write queue is waited for: what was sent goes ahead
+ * of the CLEAR REQUEST on the same in-order links. Stop when the call
+ * leaves the data transfer state, on a signal, after 30 s, or at once
+ * with SO_LINGER set to 0.
+ */
+static void rose_wait_for_sent(struct sock *sk)
+{
+	struct rose_sock *rose = rose_sk(sk);
+	long timeo, t, left;
+
+	lock_sock(sk);
+	if (sock_flag(sk, SOCK_LINGER))
+		timeo = sk->sk_lingertime;
+	else
+		timeo = 30 * HZ;
+
+	while (timeo > 0 && rose->state == ROSE_STATE_3 &&
+	       !skb_queue_empty(&sk->sk_write_queue)) {
+		if (signal_pending(current))
+			break;
+		t = min_t(long, timeo, HZ / 10);
+		release_sock(sk);
+		left = schedule_timeout_interruptible(t);
+		lock_sock(sk);
+		timeo -= max_t(long, t - left, 1);
+	}
+	release_sock(sk);
+}
+
 static int rose_release(struct socket *sock)
 {
 	struct sock *sk = sock->sk;
@@ -737,6 +771,7 @@ static int rose_release(struct socket *sock)
 	if (sk == NULL) return 0;
 
 	sock_hold(sk);
+	rose_wait_for_sent(sk);
 	sock_orphan(sk);
 	lock_sock(sk);
 	rose = rose_sk(sk);
