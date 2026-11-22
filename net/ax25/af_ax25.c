@@ -1065,6 +1065,37 @@ struct sock *ax25_make_new(struct sock *osk, struct ax25_dev *ax25_dev)
 	return sk;
 }
 
+/*
+ * Before a connected socket is closed, give the data already written a
+ * chance to be sent and acknowledged: the DISC that follows clears the
+ * queues, and a message written just before close() (a "73" at the end
+ * of a session) would be lost. Stop when the link leaves the connected
+ * state, on a signal, or after T1 * (N2 + 1), and not at all with
+ * SO_LINGER set to 0. Called with the socket locked.
+ */
+static void ax25_wait_for_sent(struct sock *sk, ax25_cb *ax25)
+{
+	long timeo, t, left;
+
+	if (sock_flag(sk, SOCK_LINGER))
+		timeo = sk->sk_lingertime;
+	else
+		timeo = ax25->t1 * (ax25->n2 + 1);
+
+	while (timeo > 0 &&
+	       (ax25->state == AX25_STATE_3 || ax25->state == AX25_STATE_4) &&
+	       (!skb_queue_empty(&ax25->write_queue) ||
+		!skb_queue_empty(&ax25->ack_queue))) {
+		if (signal_pending(current))
+			break;
+		t = min_t(long, timeo, HZ / 10);
+		release_sock(sk);
+		left = schedule_timeout_interruptible(t);
+		lock_sock(sk);
+		timeo -= max_t(long, t - left, 1);
+	}
+}
+
 static int ax25_release(struct socket *sock)
 {
 	struct sock *sk = sock->sk;
@@ -1076,6 +1107,8 @@ static int ax25_release(struct socket *sock)
 
 	sock_hold(sk);
 	lock_sock(sk);
+	if (sk->sk_type == SOCK_SEQPACKET)
+		ax25_wait_for_sent(sk, sk_to_ax25(sk));
 	sock_orphan(sk);
 	ax25 = sk_to_ax25(sk);
 	ax25_dev = ax25->ax25_dev;
