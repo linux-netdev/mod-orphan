@@ -1241,7 +1241,12 @@ static int nr_recvmsg(struct socket *sock, struct msghdr *msg, size_t size,
 	 */
 
 	lock_sock(sk);
-	if (sk->sk_state != TCP_ESTABLISHED) {
+	/*
+	 * Data that arrived before the circuit was closed can still be read:
+	 * the peer often sends its last message just before DISC REQUEST.
+	 */
+	if (sk->sk_state != TCP_ESTABLISHED &&
+	    skb_queue_empty(&sk->sk_receive_queue)) {
 		release_sock(sk);
 		return -ENOTCONN;
 	}
