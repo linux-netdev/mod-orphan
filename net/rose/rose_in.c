@@ -233,9 +233,12 @@ static int rose_state3_machine(struct sock *sk, struct sk_buff *skb, int framety
 		}
 		/*
 		 * If the window is full, ack the frame, else start the
-		 * acknowledge hold back timer.
+		 * acknowledge hold back timer. When we have just become busy,
+		 * send RNR at once, so that the peer stops before our
+		 * receive buffer overflows.
 		 */
-		if (((rose->vl + sysctl_rose_window_size) % ROSE_MODULUS) == rose->vr) {
+		if (((rose->vl + sysctl_rose_window_size) % ROSE_MODULUS) == rose->vr ||
+		    (rose->condition & ROSE_COND_OWN_RX_BUSY)) {
 			rose->condition &= ~ROSE_COND_ACK_PENDING;
 			rose_stop_timer(sk);
 			rose_enquiry_response(sk);
