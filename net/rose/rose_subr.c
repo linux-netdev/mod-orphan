@@ -399,7 +399,8 @@ int rose_parse_facilities(unsigned char *p, unsigned packet_len,
 
 	facilities_len = *p++;
 
-	if (facilities_len == 0 || (unsigned int)facilities_len > packet_len)
+	/* packet_len counts the length byte itself */
+	if (facilities_len == 0 || (unsigned int)facilities_len >= packet_len)
 		return 0;
 
 	while (facilities_len >= 3 && *p == 0x00) {
