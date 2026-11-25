@@ -325,7 +325,7 @@ static int rose_parse_national(unsigned char *p, struct rose_facilities_struct *
 			len -= l + 2;
 			break;
 		}
-	} while (*p != 0x00 && len > 0);
+	} while (len > 0 && *p != 0x00);
 
 	return n;
 }
@@ -387,7 +387,7 @@ static int rose_parse_ccitt(unsigned char *p, struct rose_facilities_struct *fac
 			len -= l + 2;
 			break;
 		}
-	} while (*p != 0x00 && len > 0);
+	} while (len > 0 && *p != 0x00);
 
 	return n;
 }
@@ -399,7 +399,8 @@ int rose_parse_facilities(unsigned char *p, unsigned packet_len,
 
 	facilities_len = *p++;
 
-	if (facilities_len == 0 || (unsigned int)facilities_len > packet_len)
+	/* packet_len counts the length byte itself */
+	if (facilities_len == 0 || (unsigned int)facilities_len >= packet_len)
 		return 0;
 
 	while (facilities_len >= 3 && *p == 0x00) {
