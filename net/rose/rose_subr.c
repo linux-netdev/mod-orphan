@@ -325,7 +325,7 @@ static int rose_parse_national(unsigned char *p, struct rose_facilities_struct *
 			len -= l + 2;
 			break;
 		}
-	} while (*p != 0x00 && len > 0);
+	} while (len > 0 && *p != 0x00);
 
 	return n;
 }
@@ -387,7 +387,7 @@ static int rose_parse_ccitt(unsigned char *p, struct rose_facilities_struct *fac
 			len -= l + 2;
 			break;
 		}
-	} while (*p != 0x00 && len > 0);
+	} while (len > 0 && *p != 0x00);
 
 	return n;
 }
