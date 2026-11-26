@@ -1874,6 +1874,15 @@ static int ax25_recvmsg(struct socket *sock, struct msghdr *msg, size_t size,
 	skb_free_datagram(sk, skb);
 	err = copied;
 
+	/* Room was made: leave the busy state now if we can */
+	if (sk->sk_type == SOCK_SEQPACKET) {
+		local_bh_disable();
+		bh_lock_sock(sk);
+		ax25_check_rx_busy(sk_to_ax25(sk));
+		bh_unlock_sock(sk);
+		local_bh_enable();
+	}
+
 out:
 	release_sock(sk);
 

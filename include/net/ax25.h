@@ -441,6 +441,7 @@ void ax25_requeue_frames(ax25_cb *);
 int ax25_validate_nr(ax25_cb *, unsigned short);
 int ax25_decode(ax25_cb *, struct sk_buff *, int *, int *, int *);
 void ax25_send_control(ax25_cb *, int, int, int);
+void ax25_check_rx_busy(ax25_cb *ax25);
 void ax25_return_dm(struct net_device *, ax25_address *, ax25_address *,
 		    ax25_digi *);
 void ax25_calculate_t1(ax25_cb *);

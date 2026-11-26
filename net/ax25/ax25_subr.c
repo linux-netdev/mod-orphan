@@ -212,6 +212,33 @@ void ax25_send_control(ax25_cb *ax25, int frametype, int poll_bit, int type)
  *
  *	Note: src here is the sender, thus it's the target of the DM
  */
+/*
+ *	Leave the busy state as soon as the application has made room in
+ *	the receive buffer, instead of waiting for the next heartbeat.
+ *	A DAMA slave does not send on its own: the master's next poll is
+ *	answered with RR. Called with the socket spinlock held.
+ */
+void ax25_check_rx_busy(ax25_cb *ax25)
+{
+	struct sock *sk = ax25->sk;
+
+	if (!sk || !ax25->ax25_dev ||
+	    !(ax25->condition & AX25_COND_OWN_RX_BUSY) ||
+	    (ax25->state != AX25_STATE_3 && ax25->state != AX25_STATE_4) ||
+	    atomic_read(&sk->sk_rmem_alloc) >= (sk->sk_rcvbuf >> 1))
+		return;
+
+	ax25->condition &= ~AX25_COND_OWN_RX_BUSY;
+	ax25->condition &= ~AX25_COND_ACK_PENDING;
+
+#ifdef CONFIG_AX25_DAMA_SLAVE
+	if (ax25->ax25_dev->values[AX25_VALUES_PROTOCOL] == AX25_PROTO_DAMA_SLAVE &&
+	    ax25->ax25_dev->dama.slave)
+		return;
+#endif
+	ax25_send_control(ax25, AX25_RR, AX25_POLLOFF, AX25_RESPONSE);
+}
+
 void ax25_return_dm(struct net_device *dev, ax25_address *src, ax25_address *dest, ax25_digi *digi)
 {
 	struct sk_buff *skb;
