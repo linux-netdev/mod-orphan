@@ -195,6 +195,7 @@ void nr_setup(struct net_device *);
 
 /* nr_in.c */
 int nr_process_rx_frame(struct sock *, struct sk_buff *);
+void nr_check_rx_busy(struct sock *sk);
 
 /* nr_loopback.c */
 void nr_loopback_init(void);
