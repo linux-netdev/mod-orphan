@@ -105,8 +105,16 @@ static void nr_send_iframe(struct sock *sk, struct sk_buff *skb)
 	skb->data[2] = nr->vs;
 	skb->data[3] = nr->vr;
 
+	/*
+	 * skb is a clone: its data is shared with the frame kept on the
+	 * ack queue, which is sent again on T1 or a NAK. Set or clear the
+	 * choke flag on every send, so that a frame first sent while we
+	 * were busy does not carry the flag on every later copy.
+	 */
 	if (nr->condition & NR_COND_OWN_RX_BUSY)
 		skb->data[4] |= NR_CHOKE_FLAG;
+	else
+		skb->data[4] &= ~NR_CHOKE_FLAG;
 
 	nr_start_idletimer(sk);
 
@@ -129,6 +137,8 @@ void nr_send_nak_frame(struct sock *sk)
 
 	if (nr->condition & NR_COND_OWN_RX_BUSY)
 		skbn->data[4] |= NR_CHOKE_FLAG;
+	else
+		skbn->data[4] &= ~NR_CHOKE_FLAG;
 
 	nr_transmit_buffer(sk, skbn);
 
