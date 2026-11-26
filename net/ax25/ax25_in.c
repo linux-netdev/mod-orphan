@@ -548,6 +548,17 @@ int ax25_kiss_rcv(struct sk_buff *skb, struct net_device *dev,
 		return 0;
 	}
 
+	/*
+	 * The high nibble is the KISS port.  An AX.25 device is a single
+	 * port, so data from another port of a multi-port TNC is not ours.
+	 */
+	if (*skb->data != 0) {
+		pr_info_once("ax25: %s: dropping data from KISS port %u, only port 0 is used\n",
+			     dev->name, *skb->data >> 4);
+		kfree_skb(skb);
+		return 0;
+	}
+
 	skb_pull(skb, AX25_KISS_HEADER_LEN);	/* Remove the KISS byte */
 
 	return ax25_rcv(skb, dev, (const ax25_address *)dev->dev_addr, ptype);
