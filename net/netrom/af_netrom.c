@@ -534,6 +534,38 @@ static struct sock *nr_make_new(struct sock *osk)
 	return sk;
 }
 
+/*
+ * Before a connected socket is closed, give the data already written a
+ * chance to be sent and acknowledged: the DISC REQUEST that follows
+ * clears the queues, and a message written just before close() would be
+ * lost. Stop when the circuit leaves the connected state, on a signal,
+ * or after T1 * (N2 + 1), and not at all with SO_LINGER set to 0.
+ */
+static void nr_wait_for_sent(struct sock *sk)
+{
+	struct nr_sock *nr = nr_sk(sk);
+	long timeo, t, left;
+
+	lock_sock(sk);
+	if (sock_flag(sk, SOCK_LINGER))
+		timeo = sk->sk_lingertime;
+	else
+		timeo = nr->t1 * (nr->n2 + 1);
+
+	while (timeo > 0 && nr->state == NR_STATE_3 &&
+	       (!skb_queue_empty(&sk->sk_write_queue) ||
+		!skb_queue_empty(&nr->ack_queue))) {
+		if (signal_pending(current))
+			break;
+		t = min_t(long, timeo, HZ / 10);
+		release_sock(sk);
+		left = schedule_timeout_interruptible(t);
+		lock_sock(sk);
+		timeo -= max_t(long, t - left, 1);
+	}
+	release_sock(sk);
+}
+
 static int nr_release(struct socket *sock)
 {
 	struct sock *sk = sock->sk;
@@ -542,6 +574,7 @@ static int nr_release(struct socket *sock)
 	if (sk == NULL) return 0;
 
 	sock_hold(sk);
+	nr_wait_for_sent(sk);
 	sock_orphan(sk);
 	lock_sock(sk);
 	nr = nr_sk(sk);
@@ -1208,7 +1241,12 @@ static int nr_recvmsg(struct socket *sock, struct msghdr *msg, size_t size,
 	 */
 
 	lock_sock(sk);
-	if (sk->sk_state != TCP_ESTABLISHED) {
+	/*
+	 * Data that arrived before the circuit was closed can still be read:
+	 * the peer often sends its last message just before DISC REQUEST.
+	 */
+	if (sk->sk_state != TCP_ESTABLISHED &&
+	    skb_queue_empty(&sk->sk_receive_queue)) {
 		release_sock(sk);
 		return -ENOTCONN;
 	}
