@@ -121,3 +121,24 @@ void rose_enquiry_response(struct sock *sk)
 
 	rose_stop_timer(sk);
 }
+
+/*
+ * Leave the busy state as soon as the application has made room in the
+ * receive buffer, instead of waiting for the next heartbeat. Called with
+ * the socket locked.
+ */
+void rose_check_rx_busy(struct sock *sk)
+{
+	struct rose_sock *rose = rose_sk(sk);
+
+	if (rose->state != ROSE_STATE_3 ||
+	    !(rose->condition & ROSE_COND_OWN_RX_BUSY) ||
+	    atomic_read(&sk->sk_rmem_alloc) >= (sk->sk_rcvbuf / 2))
+		return;
+
+	rose->condition &= ~ROSE_COND_OWN_RX_BUSY;
+	rose->condition &= ~ROSE_COND_ACK_PENDING;
+	rose->vl         = rose->vr;
+	rose_write_internal(sk, ROSE_RR);
+	rose_stop_timer(sk);	/* HB */
+}

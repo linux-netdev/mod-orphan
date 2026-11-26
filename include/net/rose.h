@@ -253,6 +253,7 @@ int rose_loopback_queue(struct sk_buff *, struct rose_neigh *);
 /* rose_out.c */
 void rose_kick(struct sock *);
 void rose_enquiry_response(struct sock *);
+void rose_check_rx_busy(struct sock *sk);
 
 /* rose_route.c */
 extern struct rose_neigh *rose_loopback_neigh;

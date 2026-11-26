@@ -218,15 +218,7 @@ static void rose_heartbeat_expiry(struct timer_list *t)
 		/*
 		 * Check for the state of the receive buffer.
 		 */
-		if (atomic_read(&sk->sk_rmem_alloc) < (sk->sk_rcvbuf / 2) &&
-		    (rose->condition & ROSE_COND_OWN_RX_BUSY)) {
-			rose->condition &= ~ROSE_COND_OWN_RX_BUSY;
-			rose->condition &= ~ROSE_COND_ACK_PENDING;
-			rose->vl         = rose->vr;
-			rose_write_internal(sk, ROSE_RR);
-			rose_stop_timer(sk);	/* HB */
-			break;
-		}
+		rose_check_rx_busy(sk);
 		break;
 	}
 

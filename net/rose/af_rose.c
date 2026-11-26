@@ -1491,6 +1491,11 @@ static int rose_recvmsg(struct socket *sock, struct msghdr *msg, size_t size,
 
 	skb_free_datagram(sk, skb);
 
+	/* Room was made: leave the busy state now if we can */
+	lock_sock(sk);
+	rose_check_rx_busy(sk);
+	release_sock(sk);
+
 	return copied;
 }
 

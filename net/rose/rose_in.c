@@ -187,7 +187,14 @@ static int rose_state3_machine(struct sock *sk, struct sk_buff *skb, int framety
 				rose->vr = (rose->vr + 1) % ROSE_MODULUS;
 				queued = 1;
 			} else {
-				/* Should never happen ! */
+				/*
+				 * The receive buffer is full (or a filter
+				 * dropped the packet). Acknowledge first what
+				 * the application already has: the reset makes
+				 * the peer send its unacknowledged packets
+				 * again, and those would be delivered twice.
+				 */
+				rose_enquiry_response(sk);
 				rose_write_internal(sk, ROSE_RESET_REQUEST);
 				rose->condition = 0x00;
 				rose->vs        = 0;
@@ -226,9 +233,12 @@ static int rose_state3_machine(struct sock *sk, struct sk_buff *skb, int framety
 		}
 		/*
 		 * If the window is full, ack the frame, else start the
-		 * acknowledge hold back timer.
+		 * acknowledge hold back timer. When we have just become busy,
+		 * send RNR at once, so that the peer stops before our
+		 * receive buffer overflows.
 		 */
-		if (((rose->vl + sysctl_rose_window_size) % ROSE_MODULUS) == rose->vr) {
+		if (((rose->vl + sysctl_rose_window_size) % ROSE_MODULUS) == rose->vr ||
+		    (rose->condition & ROSE_COND_OWN_RX_BUSY)) {
 			rose->condition &= ~ROSE_COND_ACK_PENDING;
 			rose_stop_timer(sk);
 			rose_enquiry_response(sk);
