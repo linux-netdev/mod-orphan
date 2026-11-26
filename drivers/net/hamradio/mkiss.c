@@ -325,6 +325,14 @@ static void kiss_unesc(struct mkiss *ax, unsigned char s)
 		if (test_and_clear_bit(AXF_ESCAPE, &ax->flags))
 			s = END;
 		break;
+	default:
+		/*
+		 * FESC must be followed by TFEND or TFESC.  Keep the byte,
+		 * but leave the escaped state so that a later TFEND or
+		 * TFESC data byte is not taken as escaped.
+		 */
+		clear_bit(AXF_ESCAPE, &ax->flags);
+		break;
 	}
 
 	spin_lock_bh(&ax->buflock);
